@@ -246,7 +246,9 @@ def main(args):
                     if not compare_snmp_data(args.oid_fail, varBindsClientUpdate):
                         logger.error('Update client data failed')
                         sys.exit(1)
-            break
+             return True
+    logger.error(f"Tag {args.tag} not found on server {args.server}")
+    sys.exit(1)
 
 
 if __name__ == '__main__':
