@@ -1,4 +1,4 @@
-/var/log/sla-snmp.log {
+/var/log/sla_snmp.log {
         daily
         missingok
         rotate 7
