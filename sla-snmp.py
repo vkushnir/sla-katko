@@ -55,7 +55,7 @@ snmpOpts = "-OQ"
 
 
 def get_args():
-    parser = ArgumentParser(description='Get data from ALS')
+    parser = ArgumentParser(description='Get data from SLA server and set SNMP value')
     grps = parser.add_argument_group('Server')
     grps.add_argument('--server', required=True, action='store', help='SLA server')
     grps.add_argument('--server-port', action='store', help='Server port', default=161)
