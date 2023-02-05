@@ -124,16 +124,13 @@ class _AppendOid(Action):
     
     def __call__(self, parser, namespace, values, option_string=None):
         values = values.split(':')
-        if len(values) < 2:
+        if len(values) != 3:
             raise ValueError('oid must be in format oid:type:value')
-        elif len(values) == 2:
-            oid, val = values
-            if val.isdigit():
-                t = 'i'
-            else:
-                t = 's'
         else:
             oid, t, val = values
+            t = t.lower()
+            if t not in ('i', 'u', 't', 'a', 'o', 's', 'x', 'd', 'b'):
+                raise ValueError('type must be i, u, t, a, o, s, x, d or b')
         
         items = getattr(namespace, self.dest, None)
         items = _copy_items(items)
