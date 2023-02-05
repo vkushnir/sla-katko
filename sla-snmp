@@ -1,0 +1,9 @@
+/var/log/sla-snmp.log {
+        daily
+        missingok
+        rotate 7
+        compress
+        delaycompress
+        notifempty
+        create 644 root adm
+}

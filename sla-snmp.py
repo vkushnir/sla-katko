@@ -5,12 +5,52 @@ import sys
 from argparse import ArgumentParser, Action, OPTIONAL
 from subprocess import Popen, PIPE
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 rttMonCtrlAdminTag = "iso.3.6.1.4.1.9.9.42.1.2.1.1.3"
-rttMonCtrlAdminStatus = "iso.3.6.1.4.1.9.9.42.1.2.1.1.9"
-rttActive = 1
+rttMonLatestRttOperSense = "iso.3.6.1.4.1.9.9.42.1.2.10.1.2"
+rttResponseSense = [
+    "Other",
+    "Ok",
+    "Disconnected",
+    "Over Threshold",
+    "Timeout",
+    "Busy",
+    "Not Connected",
+    "Dropped",
+    "Sequence Error",
+    "Verify Error",
+    "Application Specific",
+    "DNS Server Timeout",
+    "TCP Connect Timeout",
+    "HTTP Transaction Timeout",
+    "DNS Query Error",
+    "HTTP Error",
+    "Error",
+    "MPLS Lsp Echo Tx Error",
+    "MPLS Lsp Unreachable",
+    "MPLS Lsp Malformed Req",
+    "MPLS Lsp Reach but Not FEC",
+    "Enable Ok",
+    "Enable No Connect",
+    "Enable Version Fail",
+    "Enable Internal Error",
+    "Enable Abort",
+    "Enable Fail",
+    "Enable AuthFail",
+    "Enable Format Error",
+    "Enable Port in Use",
+    "Stats Retrieve Ok",
+    "Stats Retrieve No Connect",
+    "Stats Retrieve Version Fail",
+    "Stats Retrieve Internal Error",
+    "Stats Retrieve Abort",
+    "Stats Retrieve Fail",
+    "Stats Retrieve Auth Fail",
+    "Stats Retrieve Format Error",
+    "Stats Retrieve Port in Use"
+]
+rttResponseOk = 1
 snmpOpts = "-OQ"
 
 
@@ -124,10 +164,11 @@ def get_snmp_data(args, oids, server='server'):
     if p.wait() != 0:
         logger.error(f"Error: {stderr}")
         sys.exit(1)
-    return stdout.decode('utf-8')
+    return parse_snmp_data(stdout.decode('utf-8'))
 
 
 def set_snmp_data(args, oids, server='server'):
+    logger.debug(f"set_snmp_data: {getattr(args, f'{server}')}, {[value for oid in oids for value in oid.values()]}")
     p = Popen(["snmpset", snmpOpts,
                f"-v{getattr(args, f'{server}_snmp_version')}",
                f"-c{getattr(args, f'{server}_write_community')}",
@@ -138,7 +179,7 @@ def set_snmp_data(args, oids, server='server'):
     if p.wait() != 0:
         logger.error(f"Error: {stderr}")
         sys.exit(1)
-    return stdout.decode('utf-8')
+    return parse_snmp_data(stdout.decode('utf-8'))
 
 
 def get_snmp_data_table(args, oids, server='server'):
@@ -151,7 +192,7 @@ def get_snmp_data_table(args, oids, server='server'):
     if p.wait() != 0:
         logger.error(f"Error: {stderr}")
         sys.exit(1)
-    return stdout.decode('utf-8')
+    return parse_snmp_data(stdout.decode('utf-8'))
 
 
 def compare_snmp_data(oids, varBinds):
@@ -160,29 +201,33 @@ def compare_snmp_data(oids, varBinds):
     for oid in oids:
         if oid['type'] == 'i':
             if varBinds[oid['oid']] != int(oid['value']):
-                logger.error(
+                logger.warning(
                     f"OID {oid['oid']} value {varBinds[oid['oid']]} is not equal to {oid['value']}")
                 equal = False
         elif oid['type'] == 's':
             if varBinds[oid['oid']] != oid['value']:
-                logger.error(
+                logger.warning(
                     f"OID {oid['oid']} value {varBinds[oid['oid']]} is not equal to {oid['value']}")
                 equal = False
     return equal
 
 
 def main(args):
-    logger.info('Get data from server')
-    varBindsRttTag = parse_snmp_data(get_snmp_data_table(args, [rttMonCtrlAdminTag], 'server'))
-    logger.debug(f"rttMonCtrlAdminTag: {varBindsRttTag}")
+    logger.debug(f'Get data from server {args.server}')
+    varBindsRttTag = get_snmp_data_table(args, [rttMonCtrlAdminTag], 'server')
+    logger.debug(f"Server: rttMonCtrlAdminTags: {varBindsRttTag}")
     for oid, value in varBindsRttTag.items():
         if value == args.tag:
-            logger.info(f"Found tag {args.tag} in {oid}")
+            logger.debug(f"Found tag {args.tag} in {oid}")
             rttIndex = get_snmp_index(oid)
-            varBindsRttStatus = parse_snmp_data(get_snmp_data(args, [f"{rttMonCtrlAdminStatus}.{rttIndex}"], 'server'))
+            varBindsRttStatus = get_snmp_data(args, [f"{rttMonLatestRttOperSense}.{rttIndex}"], 'server')
             logger.debug(f"rttMonCtrlAdminStatus: {varBindsRttStatus}")
-            if varBindsRttStatus[f"{rttMonCtrlAdminStatus}.{rttIndex}"] == rttActive:
-                varBindsClient = parse_snmp_data(get_snmp_data(args, [oid['oid'] for oid in args.oid_ok], 'client'))
+            logger.info(
+                f"Server {args.server} RTT: '{args.tag}' status is "
+                f"{rttResponseSense[varBindsRttStatus[f'{rttMonLatestRttOperSense}.{rttIndex}']]} "
+                f"({varBindsRttStatus[f'{rttMonLatestRttOperSense}.{rttIndex}']})")
+            if varBindsRttStatus[f"{rttMonLatestRttOperSense}.{rttIndex}"] == rttResponseOk:
+                varBindsClient = get_snmp_data(args, [oid['oid'] for oid in args.oid_ok], 'client')
                 logger.debug(f"RTT status is OK, Client data: {varBindsClient}")
                 if not compare_snmp_data(args.oid_ok, varBindsClient):
                     logger.info('RTT status is OK, Update client data')
@@ -192,11 +237,10 @@ def main(args):
                         logger.error('Update client data failed')
                         sys.exit(1)
             else:
-                varBindsClient = parse_snmp_data(get_snmp_data(args, [oid['oid'] for oid in args.oid_fail], 'client'))
+                varBindsClient = get_snmp_data(args, [oid['oid'] for oid in args.oid_fail], 'client')
                 logger.debug(f"RTT status is FAIL, Client data: {varBindsClient}")
                 if not compare_snmp_data(args.oid_fail, varBindsClient):
                     logger.info('RTT status is FAIL, Update client data')
-                    set_snmp_data(args, args.oid_fail, 'client')
                     varBindsClientUpdate = set_snmp_data(args, args.oid_fail, 'client')
                     logger.debug(f"Client data update: {varBindsClientUpdate}")
                     if not compare_snmp_data(args.oid_fail, varBindsClientUpdate):
@@ -207,17 +251,24 @@ def main(args):
 
 if __name__ == '__main__':
     """ SLA SNMP"""
-    # ch = logging.StreamHandler(sys.stdout)
-    # logger.addHandler(ch)
-    logger.default_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    
+    fm = logging.Formatter('%(levelname)s: %(message)s')
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(fm)
+    logger.addHandler(sh)
     
     arguments = get_args()
     
     if arguments.log:
+        fm = logging.Formatter('%(asctime)s %(funcName)s :%(levelname)s: %(message)s')
         fh = logging.FileHandler(arguments.log)
+        fh.setFormatter(fm)
         logger.addHandler(fh)
     if arguments.verbose:
         logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
     
-    logger.info('Start')
+    logger.debug('Start')
     main(arguments)
+    logger.debug('Finish')
