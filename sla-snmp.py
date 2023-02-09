@@ -76,6 +76,10 @@ def get_args():
     grpl = parser.add_argument_group('Logging')
     grpl.add_argument('-v', '--verbose', action='store_true', help='Verbose')
     grpl.add_argument('-l', '--log', action='store', help='Log file', default="/tmp/sla-snmp.log")
+    grpc = parser.add_argument_group('Commands')
+    grpcc = grpc.add_mutually_exclusive_group(required=False)
+    grpcc.add_argument('--set-ok', action='store_true', help='Set OK status')
+    grpcc.add_argument('--set-fail', action='store_true', help='Set FAIL status')
     return parser.parse_args()
 
 
@@ -209,7 +213,27 @@ def compare_snmp_data(oids, varBinds):
     return equal
 
 
+def update_client(args, oids, status=""):
+    varBindsClient = get_snmp_data(args, [oid['oid'] for oid in oids], 'client')
+    logger.debug(f"{status}Client data: {varBindsClient}")
+    if not compare_snmp_data(oids, varBindsClient):
+        logger.info(f'{status}Update client data')
+        varBindsClientUpdate = set_snmp_data(args, oids, 'client')
+        logger.debug(f"Client data update: {varBindsClientUpdate}")
+        if not compare_snmp_data(args.oids, varBindsClientUpdate):
+            logger.error('Update client data failed')
+            sys.exit(1)
+            
+
 def main(args):
+    if args.set_ok:
+        logger.info(f"Set OK status on client {args.client}")
+        update_client(args, args.oid_ok)
+        sys.exit(0)
+    elif args.set_fail:
+        logger.info(f"Set FAIL status on client {args.client}")
+        update_client(args, args.oid_fail)
+        sys.exit(0)
     logger.debug(f'Get data from server {args.server}')
     varBindsRttTag = get_snmp_data_table(args, [rttMonCtrlAdminTag], 'server')
     logger.debug(f"Server: rttMonCtrlAdminTags: {varBindsRttTag}")
@@ -224,25 +248,9 @@ def main(args):
                 f"{rttResponseSense[varBindsRttStatus[f'{rttMonLatestRttOperSense}.{rttIndex}']]} "
                 f"({varBindsRttStatus[f'{rttMonLatestRttOperSense}.{rttIndex}']})")
             if varBindsRttStatus[f"{rttMonLatestRttOperSense}.{rttIndex}"] == rttResponseOk:
-                varBindsClient = get_snmp_data(args, [oid['oid'] for oid in args.oid_ok], 'client')
-                logger.debug(f"RTT status is OK, Client data: {varBindsClient}")
-                if not compare_snmp_data(args.oid_ok, varBindsClient):
-                    logger.info('RTT status is OK, Update client data')
-                    varBindsClientUpdate = set_snmp_data(args, args.oid_ok, 'client')
-                    logger.debug(f"Client data update: {varBindsClientUpdate}")
-                    if not compare_snmp_data(args.oid_ok, varBindsClientUpdate):
-                        logger.error('Update client data failed')
-                        sys.exit(1)
+                update_client(args, args.oid_ok, status="RTT status is OK, ")
             else:
-                varBindsClient = get_snmp_data(args, [oid['oid'] for oid in args.oid_fail], 'client')
-                logger.debug(f"RTT status is FAIL, Client data: {varBindsClient}")
-                if not compare_snmp_data(args.oid_fail, varBindsClient):
-                    logger.info('RTT status is FAIL, Update client data')
-                    varBindsClientUpdate = set_snmp_data(args, args.oid_fail, 'client')
-                    logger.debug(f"Client data update: {varBindsClientUpdate}")
-                    if not compare_snmp_data(args.oid_fail, varBindsClientUpdate):
-                        logger.error('Update client data failed')
-                        sys.exit(1)
+                update_client(args, args.oid_fail, status="RTT status is FAIL, ")
             return True
     logger.error(f"Tag {args.tag} not found on server {args.server}")
     sys.exit(1)
