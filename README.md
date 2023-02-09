@@ -27,6 +27,10 @@ Client:
   --client-write-community  SNMP Community для записи данных (по умолчанию private)
   --oid-ok                  Данные для установке в случае успешного теста (формат oid:type:value)
   --oid-fail                Данные для установке в случае неуспешного теста (формат oid:type:value)
+  
+Commands:
+  --set-ok                  Установить на клиенте значение OK без проверки SLA
+  --set-fail                Установить на клиенте значение FAIL без проверки SLA
 
 Logging:
   -v, --verbose             Выводить подробный лог
@@ -99,7 +103,7 @@ graph TD
 ### logrotate
 
 ```bash
-/var/log/sla-snmp.log {
+/var/log/sla_snmp*.log {
         daily
         missingok
         rotate 7

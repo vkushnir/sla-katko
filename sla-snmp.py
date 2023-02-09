@@ -223,7 +223,7 @@ def update_client(args, oids, status=""):
         if not compare_snmp_data(args.oids, varBindsClientUpdate):
             logger.error('Update client data failed')
             sys.exit(1)
-            
+
 
 def main(args):
     if args.set_ok:
